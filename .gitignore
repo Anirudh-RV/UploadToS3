@@ -105,3 +105,9 @@ dist
 
 # Keys 
 *constants.js
+
+# IMAGES AND VIDEOS 
+*.jpeg
+*.mov
+*.mp4
+*.png
