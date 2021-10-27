@@ -2,9 +2,9 @@ const AWS = require("aws-sdk");
 const express = require("express");
 const multer = require("multer");
 const cors = require("cors");
-const keys = require("./constants");
-const fs = require("fs");
+const KEYS = require("./constants").AWS_KEYS;
 const path = require("path");
+const fs = require("fs");
 const app = express();
 const port = 4000;
 
@@ -17,14 +17,14 @@ app.use("/img", express.static(path.join(__dirname, "public/uploaded")));
 app.use("/file", express.static(path.join(__dirname, "public/file")));
 
 const s3 = new AWS.S3({
-  accessKeyId: "",
-  secretAccessKey: "",
+  accessKeyId: KEYS.AWS_ACCESS_KEY_ID,
+  secretAccessKey: KEYS.AWS_SECRET_ACCESS_KEY,
 });
 
 // 'public/Uploaded is destination'
 // for scaling it to multiple users, send user_id to the backend and save under a new folder with the user_id name.
 const storage = multer.diskStorage({
-  destination: function (req, file, cb) {
+  destination: (req, _, cb) => {
     const fs = require("fs");
     dir = "public/uploaded/" + req.headers["username"];
     if (!fs.existsSync(dir)) {
@@ -36,27 +36,18 @@ const storage = multer.diskStorage({
     }
     cb(null, dir);
   },
-  filename: function (req, file, cb) {
+  filename: (_, file, cb) => {
     cb(null, file.originalname);
-    console.log(`Original name: ${file.originalname}`);
-    setTimeout(function () {
-      uploadFileToS3(
-        "public/uploaded/" +
-          req.headers["username"] +
-          "/uploads/" +
-          file.originalname
-      );
-    }, 5000);
   },
 });
 
 const uploadFileToS3 = (fileName) => {
-  // adding to AWS S3 here
-  console.log(`Calling uploadFileToS3: ${fileName}`);
+  // adding to AWS S3 using aws-sdk
+
   const fileContent = fs.readFileSync(fileName);
 
   const params = {
-    Bucket: "",
+    Bucket: KEYS.S3_BUCKET,
     Key: `${fileName}`,
     Body: fileContent,
   };
@@ -68,22 +59,31 @@ const uploadFileToS3 = (fileName) => {
     console.log(`File uploaded successfully. ${data.Location}`);
   });
 };
+
 const upload = multer({ storage: storage }).array("file");
 
-const folderpath = "./public/uploaded";
-
-app.get("/", function (req, res) {
+app.get("/", (req, res) => {
   return res.send("Hello Server");
 });
 
-app.post("/upload", function (req, res) {
-  upload(req, res, function (err) {
+app.post("/upload", (req, res) => {
+  upload(req, res, (err) => {
     if (err instanceof multer.MulterError) {
       return res.status(500).json(err);
       // A Multer error occurred when uploading.
     } else if (err) {
       return res.status(500).json(err);
       // An unknown error occurred when uploading.
+    }
+    const fileNames = req.headers["filenames"].split(",");
+    //console.log(`file names: ${fileNames[0]}`);
+    for (let i = 0; i != fileNames.length; ++i) {
+      uploadFileToS3(
+        "public/uploaded/" +
+          req.headers["username"] +
+          "/uploads/" +
+          fileNames[i]
+      );
     }
     return res.status(200).send(req.file);
     // Everything went fine.

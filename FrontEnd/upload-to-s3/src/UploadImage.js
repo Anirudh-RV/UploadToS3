@@ -80,17 +80,21 @@ class UploadImage extends Component {
   onClickHandler = () => {
     const data = new FormData();
     // getting userName from input
-    var userName = this.props.userName;
+    var fileNames = [];
     // filling FormData with selectedFiles(Array of objects)
     for (var x = 0; x < this.state.selectedFile.length; x++) {
       data.append("file", this.state.selectedFile[x]);
+      fileNames.push(this.state.selectedFile[x].name);
     }
+
+    console.log(`filenames: ${fileNames}`);
     // header carries information of userName to backend with data
     axios
       .post(this.nodeServerUrl + "/upload", data, {
         headers: {
           userName: "teal",
           type: "imageUpload",
+          fileNames: fileNames,
         },
         onUploadProgress: (ProgressEvent) => {
           this.setState({
