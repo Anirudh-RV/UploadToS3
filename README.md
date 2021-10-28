@@ -20,3 +20,5 @@ Web application to Upload to AWS S3.
 2. The Upload will go through the following process:
    React UI -> NodeJS Backend -> Storage in local storage -> Use AWS-SDK to push to S3 Storage
 3. The download option will help in downloading the object who's name is specified in the input box directly from S3.
+
+# DEMO
