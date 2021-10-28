@@ -3,34 +3,30 @@ const express = require("express");
 const multer = require("multer");
 const cors = require("cors");
 const KEYS = require("./constants").AWS_KEYS;
-const path = require("path");
 const fs = require("fs");
 const app = express();
 const port = 4000;
 
+// Enable CORS
 app.use(cors());
 
-//Serve static content for the app from the "public" directory in the application directory.
+// Serve static content for the app from the "public" directory in the application directory from local storage.
 app.use(express.static(__dirname + "/public"));
 app.use("/static", express.static(__dirname + "/public"));
-app.use("/img", express.static(path.join(__dirname, "public/uploaded")));
-app.use("/file", express.static(path.join(__dirname, "public/file")));
 
-const s3 = new AWS.S3({
+const s3Instance = new AWS.S3({
   accessKeyId: KEYS.AWS_ACCESS_KEY_ID,
   secretAccessKey: KEYS.AWS_SECRET_ACCESS_KEY,
 });
 
-// 'public/Uploaded is destination'
-// for scaling it to multiple users, send user_id to the backend and save under a new folder with the user_id name.
-const storage = multer.diskStorage({
+// Using Multer to store in local storage before pushing it to S3
+const localStorage = multer.diskStorage({
   destination: (req, _, cb) => {
-    const fs = require("fs");
-    dir = "public/uploaded/" + req.headers["username"];
+    dir = `public/uploaded/${req.headers["username"]}`;
     if (!fs.existsSync(dir)) {
       fs.mkdirSync(dir);
     }
-    dir = "public/uploaded/" + req.headers["username"] + "/uploads";
+    dir = `public/uploaded/${req.headers["username"]}/uploads`;
     if (!fs.existsSync(dir)) {
       fs.mkdirSync(dir);
     }
@@ -41,18 +37,22 @@ const storage = multer.diskStorage({
   },
 });
 
-const uploadFileToS3 = (fileName) => {
-  // adding to AWS S3 using aws-sdk
+// Uploading to LocalStorage
+const uploadFilesToLocalStorage = multer({ storage: localStorage }).array(
+  "file"
+);
 
+// Uploading to S3
+const uploadFileToS3 = (fileName) => {
   const fileContent = fs.readFileSync(fileName);
 
   const params = {
     Bucket: KEYS.S3_BUCKET,
-    Key: `${fileName}`,
+    Key: fileName,
     Body: fileContent,
   };
 
-  s3.upload(params, (err, data) => {
+  s3Instance.upload(params, (err, data) => {
     if (err) {
       console.log(`Error: ${err}`);
     }
@@ -60,36 +60,35 @@ const uploadFileToS3 = (fileName) => {
   });
 };
 
-const upload = multer({ storage: storage }).array("file");
+// Sending mulitple files for upload to S3.
+const processFilesForS3 = (fileNameArray, userName) => {
+  const fileNames = fileNameArray.split(",");
+  for (let i = 0; i != fileNames.length; ++i) {
+    uploadFileToS3(`public/uploaded/${userName}/uploads/${fileNames[i]}`);
+  }
+};
 
 app.get("/", (req, res) => {
-  return res.send("Hello Server");
+  return res.send(`Node Server running on port: ${port}`);
 });
 
+// Handles POST calls for upload of objects {Local Storage -> S3 Storage}.
 app.post("/upload", (req, res) => {
-  upload(req, res, (err) => {
+  uploadFilesToLocalStorage(req, res, (err) => {
     if (err instanceof multer.MulterError) {
-      return res.status(500).json(err);
       // A Multer error occurred when uploading.
-    } else if (err) {
       return res.status(500).json(err);
+    } else if (err) {
       // An unknown error occurred when uploading.
+      return res.status(500).json(err);
     }
-    const fileNames = req.headers["filenames"].split(",");
-    //console.log(`file names: ${fileNames[0]}`);
-    for (let i = 0; i != fileNames.length; ++i) {
-      uploadFileToS3(
-        "public/uploaded/" +
-          req.headers["username"] +
-          "/uploads/" +
-          fileNames[i]
-      );
-    }
+
+    // Upload to S3 after writing to local storage.
+    processFilesForS3(req.headers["filenames"], req.headers["username"]);
+
+    // Return 200 status on success.
     return res.status(200).send(req.file);
-    // Everything went fine.
   });
 });
 
-app.listen(port, function () {
-  console.log("running on port: " + port);
-});
+app.listen(port, () => console.log(`running on port:${port}`));
